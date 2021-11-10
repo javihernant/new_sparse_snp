@@ -10,23 +10,25 @@ using namespace std;
 /** Allocation */
 SNP_model::SNP_model(uint n, uint m)
 {
+    this->cpu_updated = 1;
+    this->gpu_updated = 0;
     // allocation in CPU
     this->n = n;  // number of neurons
     this->m = m;  // number of rules
     this->conf_vector     = (uint*) malloc(sizeof(uint)*n); // configuration vector (only one, we simulate just a computation)
     this->delays_vector = (uint*) malloc(sizeof(uint)*n); 
-    this->rule_index      = (uint*)   malloc(sizeof(uint)*(n+1)); // indeces of rules inside neuron (start index per neuron)
+    this->rule_index      = (int*)   malloc(sizeof(int)*(n+1)); // indeces of rules inside neuron (start index per neuron)
     this->rules.Ei        = (uint*)  malloc(sizeof(uint)*m); // Regular expression Ei of a rule
     this->rules.En        = (uint*)  malloc(sizeof(uint)*m); // Regular expression En of a rule
     this->rules.c         = (uint*)  malloc(sizeof(uint)*m); // LHS of rule
     this->rules.p         = (uint*)  malloc(sizeof(uint)*m); // RHS of rule
-    this->rules.d         = (uint*)  malloc(sizeof(uint)*n); // RHS of rule
+    this->rules.d         = (uint*)  malloc(sizeof(uint)*m); // RHS of rule
     this->rules.nid       = (uint*)   malloc(sizeof(uint)*(m)); // Index of the neuron where the rule is
 
     // allocation in GPU
     cudaMalloc(&this->d_conf_vector,   sizeof(uint)*n);
     cudaMalloc(&this->d_delays_vector,   sizeof(uint)*n);
-    cudaMalloc(&this->d_rule_index,    sizeof(uint)*(n+1));
+    cudaMalloc(&this->d_rule_index,    sizeof(int)*(n+1));
     cudaMalloc(&this->d_rules.Ei,      sizeof(uint)*m);
     cudaMalloc(&this->d_rules.En,      sizeof(uint)*m);
     cudaMalloc(&this->d_rules.c,       sizeof(uint)*m);
@@ -36,8 +38,9 @@ SNP_model::SNP_model(uint n, uint m)
 
     // initialization (only in CPU, having updated version)
     memset(this->conf_vector,   0,  sizeof(uint)*n);
-    memset(this->d_delays_vector,   0,  sizeof(uint)*n);
-    memset(this->rule_index,    0,  sizeof(uint)*(n+1));
+    memset(this->delays_vector,   0,  sizeof(uint)*n);
+    memset(this->rule_index,    -1,  sizeof(int)*(n+1));
+    this->rule_index[0]=0;
     memset(this->rules.Ei,      0,  sizeof(uint)*m);
     memset(this->rules.En,      0,  sizeof(uint)*m);
     memset(this->rules.c,       0,  sizeof(uint)*m);
@@ -74,6 +77,19 @@ SNP_model::~SNP_model()
     cudaFree(this->d_rules.p);
     cudaFree(this->d_rules.d);
     cudaFree(this->d_rules.nid);
+}
+
+void SNP_model::print_conf_vector (){
+    //////////////////////////////////////////////////////
+    assert(gpu_updated || cpu_updated);
+    if (!cpu_updated) load_to_cpu();
+    //////////////////////////////////////////////////////
+    
+    printf("Configuration vector\n");
+    for(int i=0; i<n; i++){
+        printf("%d ",conf_vector[i]);
+    }
+    printf("\n");
 }
 
 void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile){
@@ -119,10 +135,10 @@ void SNP_model::add_rule (uint nid, uint e_n, uint e_i, uint c, uint p, uint d)
     gpu_updated = false; cpu_updated = true;
     //////////////////////////////////////////////////////
 
-    if (rule_index[nid+1] == 0) // first rule in neuron
+    if (rule_index[nid+1] == -1) // first rule in neuron
         rule_index[nid+1] = rule_index[nid] + 1; 
     else   // keep accumulation
-        rule_index[nid+1] = rule_index[nid+1] - rule_index[nid] + 1; 
+        rule_index[nid+1] = rule_index[nid+1] + 1;
 
     uint rid = rule_index[nid+1]-1;
 
@@ -130,6 +146,7 @@ void SNP_model::add_rule (uint nid, uint e_n, uint e_i, uint c, uint p, uint d)
     rules.En[rid] = e_n;
     rules.c[rid]  = c;
     rules.p[rid]  = p;
+    rules.d[rid]  = d;
     rules.nid[rid]= nid;
 }
 
@@ -141,7 +158,7 @@ void SNP_model::add_synapse (uint i, uint j)
     // ensure parameters within limits
     assert(i < n && j < n);
     // ensure all rules have been introduced already
-    assert(rule_index[n+1]==m);
+    // assert(rule_index[n]==m);
     // SNP does not allow self-synapses
     assert(i!=j);
     done_rules = true; // from now on, no more rules can be added
@@ -151,6 +168,13 @@ void SNP_model::add_synapse (uint i, uint j)
     //////////////////////////////////////////////////////
 
     include_synapse(i,j);
+}
+__global__ void k_print_conf_v(uint *conf_v, int n){
+    printf("Configuration vector(gpu memory)\n");
+    for(int i=0; i<n; i++){
+        printf("%d ",conf_v[i]);
+    }
+    printf("\n");
 }
 
 bool SNP_model::transition_step ()
@@ -162,15 +186,12 @@ bool SNP_model::transition_step ()
     cpu_updated = false;
     //////////////////////////////////////////////////////
 
+    print_conf_vector();
+    print_transition_matrix();
     calc_spiking_vector();
+    print_spiking_vector();
     calc_transition();
-    if(this->verbosity_lv == 1){
-        load_to_cpu();
-        for(int i=0; i<n; i++){
-            printf("%d",conf_vector[i]);
-        }
-        printf("\n");
-    }
+    print_conf_vector();
 
     return true; // TODO: check if a stopping criterion has been reached
 }

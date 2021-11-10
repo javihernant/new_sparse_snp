@@ -15,6 +15,10 @@ protected:
     void load_transition_matrix();
     void calc_spiking_vector();
     void calc_transition();
+    void print_transition_matrix();
+    void print_spiking_vector();
+    void print_delays_vector();
+
 };
 
 

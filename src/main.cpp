@@ -50,12 +50,10 @@ int main(int argc, char* argv[])
 		switch (opt) {
                 case 'e':
                 	example = atoi(optarg);
-					printf("example:%d\n",example);
 					if(example > 3) print_usage(argv);
                   	break;
                	case 'a':
 					algorithm = atoi(optarg);
-					printf("algorithm:%d\n",example);
 
 					if(algorithm > 2) print_usage(argv);
 					break;

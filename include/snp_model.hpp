@@ -42,6 +42,10 @@ public:
      * Perform a transition step on the model. 
      * Returns if no more steps can be done. */
     bool transition_step();
+    /**
+     * Prints configuration vector. If cpu not updated, downloads it from gpu first.
+     */
+    void print_conf_vector();
     /** 
      * Simulate a computation of the model. 
      * Optionally, set a limit to l steps */
@@ -56,7 +60,7 @@ protected:
     uint *conf_vector;     // configuration vector (# neurons)
     uint *trans_matrix;    // transition matrix (# rules * # neurons)
     int *spiking_vector;  // spiking vector (# neurons)
-    uint   *rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
+    int   *rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
 
     struct _rule {
         uint  *En;          // indicates for each rule, the regular expression multiplicity
@@ -72,7 +76,7 @@ protected:
     uint * d_conf_vector;
     uint  * d_trans_matrix;
     int * d_spiking_vector;
-    uint   * d_rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
+    int   * d_rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
 
     // Consistency flags
     bool gpu_updated;           // true if GPU copy is updated
@@ -106,6 +110,12 @@ protected:
     virtual void calc_spiking_vector() = 0;
     // @override define this method to compute the transition, once the spiking vector is calculated
     virtual void calc_transition() = 0;
+    // @override define this method to print the transition matrix
+    virtual void print_transition_matrix() = 0;
+    // @override define this method to print the spiking vector
+    virtual void print_spiking_vector() = 0;
+    // @override define this method to print the delays vector
+    virtual void print_delays_vector() = 0;
 };
 
 

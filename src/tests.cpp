@@ -1,5 +1,6 @@
 #include "tests.hpp"
 #include <iostream>
+#include <new>
 
 // Algorithms
 
@@ -39,11 +40,11 @@ void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile){
 	int neurons = 3;
     int rules = 5; 
 	SNP_model *snp = init_alg(alg, neurons, rules);
-    snp -> set_snpconfig(verbosity_lv, repetitions, outfile);
+    snp->set_snpconfig(verbosity_lv, repetitions, outfile);
     int C0[3] = {2,1,1};
 	
     for (int i=0; i<neurons; i++){
-		snp -> set_spikes (i, C0[i]);
+		snp->set_spikes (i, C0[i]);
 	}
 
     //add_rule (uint nid, uchar e_n, uchar e_i, uchar c, uchar p) 
@@ -57,7 +58,6 @@ void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile){
 	snp->add_synapse(1,0);
 	snp->add_synapse(0,2);
 	snp->add_synapse(1,2);
-	snp->add_synapse(2,neurons);
 
     snp->transition_step(); 
 
