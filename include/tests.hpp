@@ -6,6 +6,8 @@
 
 SNP_model* init_alg(int algorithm, int neurons, int rules);
 void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile);
+void sort_numbers_snp(int alg, int verbosity_lv, int repetitions, char* outfile);
+void simple_snp_with_delays(int alg, int verbosity_lv, int repetitions, char* outfile);
 
 
 #endif

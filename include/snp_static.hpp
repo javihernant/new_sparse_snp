@@ -14,6 +14,7 @@ protected:
     void load_spiking_vector();
     void load_transition_matrix();
     void calc_spiking_vector();
+    bool check_next_trans();
     void calc_transition();
     void print_transition_matrix();
     void print_spiking_vector();

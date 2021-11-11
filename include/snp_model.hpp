@@ -49,7 +49,8 @@ public:
     /** 
      * Simulate a computation of the model. 
      * Optionally, set a limit to l steps */
-    void compute(int l=1) { while(l-- >= 0 || transition_step()); };
+    //  void compute(int l=3) { while(l--) {transition_step();} };
+    void compute() { while(transition_step()); };
 
 protected:
     uint n;        // number of neurons
@@ -82,11 +83,15 @@ protected:
     bool gpu_updated;           // true if GPU copy is updated
     bool cpu_updated;           // true if CPU copy is updated
     bool done_rules;            // true if all rules have been introduced (preventing adding synapses)
+    bool *calc_next_trans;      // true if next transition has to be calculated (stored in slot 0). Host variable
+    bool *d_calc_next_trans;    // Device variable
+    
 
     // Config variables
     int verbosity_lv;
     int repetitions;
     char *outfile;
+    int step;                   // Step in which the computation is in
 
     // auxiliary methods
     /** 
@@ -108,6 +113,8 @@ protected:
     virtual void load_transition_matrix() = 0;
     // @override define method to obtain spiking vector
     virtual void calc_spiking_vector() = 0;
+    // @override define method to check if next transitions needs to be calculated. */
+    virtual bool check_next_trans() = 0;
     // @override define this method to compute the transition, once the spiking vector is calculated
     virtual void calc_transition() = 0;
     // @override define this method to print the transition matrix

@@ -56,7 +56,7 @@ __global__ void k_print_trans_mx_sparse(uint *mx, int n, int m){
 }
 
 
-__global__ void k_print_spk_v_general(int *spkv, int m){
+__global__ void k_print_spk_v_generic(int *spkv, int m){
     printf("Spiking vector\n");
     for(int i=0; i<m; i++){
         printf("%d ", spkv[i]);
@@ -64,7 +64,7 @@ __global__ void k_print_spk_v_general(int *spkv, int m){
     printf("\n");
 }
 
-__global__ void k_print_dys_v_general(uint *dys, int n){
+__global__ void k_print_dys_v_generic(uint *dys, int n){
     printf("Delays vector\n");
     for(int i=0; i<n; i++){
         printf("%d ", dys[i]);
@@ -75,12 +75,12 @@ __global__ void k_print_dys_v_general(uint *dys, int n){
 void SNP_static_sparse::print_spiking_vector(){
     //print from gpu
     // k_print_trans_mx_sparse<<<1,1>>>(d_trans_matrix, n, m);
-    k_print_spk_v_general<<<1,1>>>(d_spiking_vector, m);
+    k_print_spk_v_generic<<<1,1>>>(d_spiking_vector, m);
     cudaDeviceSynchronize();
 }
 
 void SNP_static_sparse::print_delays_vector(){
-    k_print_dys_v_general<<<1,1>>>(d_delays_vector, n);
+    k_print_dys_v_generic<<<1,1>>>(d_delays_vector, n);
     cudaDeviceSynchronize();
 }
 
@@ -94,8 +94,20 @@ __global__ void kalc_spiking_vector_generic(int* spiking_vector, uint* conf_vect
             uchar e_n = ren[r];
             int x = conf_vector[nid];
             if ((int) (e_i&(x==e_n)) || ((1-e_i)&(x>=e_n))) {   
-                spiking_vector[r] = 1;
                 conf_vector[nid]-=rc[r];
+                
+                /*handle situation where rule was previously selected, neuron had to wait d steps, but right when it is 
+                about to be fired same rule is selected, losing the action of the first time it was selected.
+                When this situation appears in rule r, spiking vector[r] is incremented by one, meaning one instance of rule 
+                r has already completed delay time and is waiting to be fired. For performance purposes, all instances 
+                of rules in this situation will be applied together when its delay counter gets to 0 */
+
+                if(spiking_vector[r] > 0 && delays_vector[nid] == 0){
+                    spiking_vector[r]+=1;
+                }else{
+                    spiking_vector[r] = 1;
+                }
+                
                 delays_vector[nid] = rd[r];
                 break;
             }
@@ -111,9 +123,6 @@ __global__ void kalc_spiking_vector_for_optimized(int* spiking_vector, uint* con
 
 void SNP_static_sparse::calc_spiking_vector() 
 {
-    //////////////////////////////////////////////////////
-    cpu_updated = false;
-    //////////////////////////////////////////////////////
     uint bs = 256;
     uint gs = (m+255)/256;
     
@@ -161,21 +170,55 @@ __global__ void kalc_transition_sparse(int* spiking_vector, uint* trans_matrix, 
     int nid = threadIdx.x+blockIdx.x*blockDim.x;
     if (nid<n && delays_vector[nid]==0){
         for (int r=0; r<m; r++){
-            if(spiking_vector[r] != -1){
-                conf_vector[nid] += trans_matrix[r*n+nid];
+            
+            if(spiking_vector[r] != -1 && delays_vector[rnid[r]]==0){
+                conf_vector[nid] += spiking_vector[r] * trans_matrix[r*n+nid];
             }
-            __syncthreads();
-            spiking_vector[r] = 0; //disable rule when all threads have finished processing row
+            
+            __syncthreads(); //disable rule when all threads have finished processing row (using only one thread)
+            if(nid==0 && spiking_vector[r] != -1 && delays_vector[rnid[r]]==0){
+                spiking_vector[r] = -1; 
+            }
+            
         }
     }
 }
 
-__global__ void update_delays_vector_static(uint * delays_vector, uint n){
+__global__ void update_delays_vector_generic(uint * delays_vector, uint n){
     
     int nid = threadIdx.x+blockIdx.x*blockDim.x;
     if(nid<n && delays_vector[nid]>0){
         delays_vector[nid]--;
     }
+}
+
+__global__ void k_check_next_trans(bool *calc_nxt, int* spkv, int spkv_size, uint * delays, int neurons){
+    calc_nxt[0] = false;
+    
+    for(int i=0; i<spkv_size; i++){
+        if(spkv[i] !=-1){
+            calc_nxt[0] = true;
+            break;   
+        }
+    }
+
+    if(!calc_nxt[0]){   
+        for(int i=0; i<neurons; i++){
+            if(delays[i] > 0){
+                calc_nxt[0] = true;
+                break;
+            }
+        }
+    }
+}
+
+bool SNP_static_sparse::check_next_trans(){
+    k_check_next_trans<<<1,1>>>(d_calc_next_trans, d_spiking_vector, m, d_delays_vector, n);
+    cudaDeviceSynchronize();
+    cuda_check(cudaMemcpy(calc_next_trans, d_calc_next_trans, sizeof(bool),cudaMemcpyDeviceToHost));
+
+    return calc_next_trans[0];
+
 }
 
 void SNP_static_sparse::calc_transition()
@@ -190,7 +233,7 @@ void SNP_static_sparse::calc_transition()
 
     kalc_transition_sparse<<<n+255,256>>>(d_spiking_vector,d_trans_matrix, d_conf_vector, d_delays_vector, d_rules.nid,n,m);
     cuda_check(cudaGetLastError());
-    update_delays_vector_static<<<n+255,256>>>(d_delays_vector, n);
+    update_delays_vector_generic<<<n+255,256>>>(d_delays_vector, n);
     cuda_check(cudaGetLastError());
     cudaDeviceSynchronize();
 }

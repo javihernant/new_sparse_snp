@@ -16,7 +16,7 @@ void print_usage(char* argv[]){
 	printf("Where: \n");
 	//printf("\n[i] is the input file describing the SNP to be simulated (check format in help file of repository)\n");
 	printf("\n[example] is the example index:\n");
-	printf("\t0 = simple SNP\n");
+	printf("\t0 = simple SNP (use -v >=2 to view conf_vector)\n");
 	printf("\t1 = sort of natural numbers\n");
 	printf("\t2 = subset sum\n");
 	printf("\t3 = simple SNP with delays\n");
@@ -24,10 +24,10 @@ void print_usage(char* argv[]){
 	printf("\t0 = No compression\n");
 	printf("\t1 = ELL\n");
 	printf("\t2 = OPTIMIZED\n");
-	printf("\n (optional) available [OPTIONS]:\n");
-	printf("\t [-o outfile] = Enables output to be printed to file. outfile is the name of the file\n");
-	printf("\t [-r repetitions] = Repeat computation \"repetition\" times\n");
-	printf("\t [-v level] = Set a level of verbosity\n");
+	printf("\n [OPTIONS] available (optional):\n");
+	printf("\t[-o outfile] = Enables output to be printed to file. outfile is the name of the file\n");
+	printf("\t[-r repetitions] = Repeat computation \"repetition\" times\n");
+	printf("\t[-v level] = Set a level of verbosity\n");
 	// printf("\t1 = GPU lineal algebra CUBLAS\n");
 	// printf("\t2 = GPU sparse representation CUSPARSE\n");
 	// TODO: Read input file of an snp
@@ -42,8 +42,8 @@ int main(int argc, char* argv[])
 
 	//option args
 	char* outfile = NULL;
-	int repetitions;
-	int verbosity_lv;
+	int repetitions = 0;
+	int verbosity = 0;
 	
 	char opt;
 	while ((opt = getopt(argc, argv, "e:a:o:r:v:")) != -1) {
@@ -64,7 +64,7 @@ int main(int argc, char* argv[])
 				   repetitions = atoi(optarg);
 				   break;
 			   	case 'v':
-				   verbosity_lv = atoi(optarg);
+				   verbosity = atoi(optarg);
 				   break;
 			   	default:
                    	print_usage(argv);
@@ -81,8 +81,8 @@ int main(int argc, char* argv[])
 
 	
 
-	Samples samples[] = {&simple_snp};
-	samples[example](algorithm, verbosity_lv, repetitions, outfile);
+	Samples samples[] = {&simple_snp, &sort_numbers_snp, &simple_snp_with_delays};
+	samples[example](algorithm, verbosity, repetitions, outfile);
 	
 	//params.debug=1;	
 	//while (!vars.halt) {

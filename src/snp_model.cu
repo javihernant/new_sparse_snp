@@ -10,6 +10,7 @@ using namespace std;
 /** Allocation */
 SNP_model::SNP_model(uint n, uint m)
 {
+    this->step = 0;
     this->cpu_updated = 1;
     this->gpu_updated = 0;
     // allocation in CPU
@@ -24,6 +25,7 @@ SNP_model::SNP_model(uint n, uint m)
     this->rules.p         = (uint*)  malloc(sizeof(uint)*m); // RHS of rule
     this->rules.d         = (uint*)  malloc(sizeof(uint)*m); // RHS of rule
     this->rules.nid       = (uint*)   malloc(sizeof(uint)*(m)); // Index of the neuron where the rule is
+    this->calc_next_trans = (bool*) malloc(sizeof(bool));
 
     // allocation in GPU
     cudaMalloc(&this->d_conf_vector,   sizeof(uint)*n);
@@ -35,6 +37,7 @@ SNP_model::SNP_model(uint n, uint m)
     cudaMalloc(&this->d_rules.p,       sizeof(uint)*m);
     cudaMalloc(&this->d_rules.d,       sizeof(uint)*m);
     cudaMalloc(&this->d_rules.nid,     sizeof(uint)*m);
+    cudaMalloc(&this->d_calc_next_trans, sizeof(bool));
 
     // initialization (only in CPU, having updated version)
     memset(this->conf_vector,   0,  sizeof(uint)*n);
@@ -66,6 +69,8 @@ SNP_model::~SNP_model()
     free(this->rules.p);
     free(this->rules.d);
     free(this->rules.nid);
+    free(this->calc_next_trans);
+    free(this->delays_vector);
 
     cudaFree(this->d_conf_vector);
     cudaFree(this->d_spiking_vector);
@@ -77,6 +82,8 @@ SNP_model::~SNP_model()
     cudaFree(this->d_rules.p);
     cudaFree(this->d_rules.d);
     cudaFree(this->d_rules.nid);
+    cudaFree(this->d_calc_next_trans);
+    cudaFree(this->d_delays_vector);
 }
 
 void SNP_model::print_conf_vector (){
@@ -177,23 +184,50 @@ __global__ void k_print_conf_v(uint *conf_v, int n){
     printf("\n");
 }
 
+
+
 bool SNP_model::transition_step ()
 {
     //////////////////////////////////////////////////////
     // check memory consistency, who has the updated copy?
     assert(gpu_updated || cpu_updated);
     if (!gpu_updated) load_to_gpu();
-    cpu_updated = false;
     //////////////////////////////////////////////////////
+    if(step==0 && verbosity_lv >= 3){
+        print_transition_matrix();
+        print_conf_vector();
+    }
+    cpu_updated = false;
 
-    print_conf_vector();
-    print_transition_matrix();
+    bool calc_next = false;
+
     calc_spiking_vector();
-    print_spiking_vector();
-    calc_transition();
-    print_conf_vector();
+    if(verbosity_lv >= 3){
+        print_spiking_vector();
+        print_delays_vector();
+    }
+    calc_next = check_next_trans();
+    
+    if(calc_next){
+        if(verbosity_lv >= 2){
+            printf("\n\nstep #%d",step);
+            printf("\n---------------------------------------\n");
+        }
 
-    return true; // TODO: check if a stopping criterion has been reached
+        calc_transition();
+        if(verbosity_lv >= 2){
+            print_conf_vector();
+        }
+        step++;
+        return calc_next;
+    }
+    
+    if(verbosity_lv==1){
+        printf("\nstep #%d\n",step);
+        print_conf_vector();
+    }
+
+    return calc_next; 
 }
 
 void SNP_model::load_to_gpu () 
