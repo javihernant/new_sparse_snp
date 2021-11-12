@@ -123,6 +123,10 @@ __global__ void kalc_spiking_vector_for_optimized(int* spiking_vector, uint* con
 
 void SNP_static_sparse::calc_spiking_vector() 
 {
+    //////////////////////////////////////////////////////
+    cpu_updated = false;
+    //////////////////////////////////////////////////////
+
     uint bs = 256;
     uint gs = (m+255)/256;
     
@@ -216,7 +220,7 @@ bool SNP_static_sparse::check_next_trans(){
     k_check_next_trans<<<1,1>>>(d_calc_next_trans, d_spiking_vector, m, d_delays_vector, n);
     cudaDeviceSynchronize();
     cuda_check(cudaMemcpy(calc_next_trans, d_calc_next_trans, sizeof(bool),cudaMemcpyDeviceToHost));
-
+    // printf("calc_next:%d",calc_next_trans[0]);
     return calc_next_trans[0];
 
 }
@@ -226,10 +230,6 @@ void SNP_static_sparse::calc_transition()
     //////////////////////////////////////////////////////
     cpu_updated = false;
     //////////////////////////////////////////////////////
-    
-    // if(verbosity>=3){
-    //     printVectors_sp_K<<<1,1,0,this->stream2>>>(d_spiking_vector, m, d_delays_vector, n);
-    // }
 
     kalc_transition_sparse<<<n+255,256>>>(d_spiking_vector,d_trans_matrix, d_conf_vector, d_delays_vector, d_rules.nid,n,m);
     cuda_check(cudaGetLastError());

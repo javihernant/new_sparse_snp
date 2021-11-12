@@ -59,7 +59,7 @@ void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile){
 	snp->add_synapse(0,2);
 	snp->add_synapse(1,2);
 
-    snp->transition_step(); 
+    snp->compute(1); 
 
 	delete snp;
 }
@@ -116,7 +116,7 @@ void sort_numbers_snp(int alg, int verbosity_lv, int repetitions, char* outfile)
 	
 	snp->compute(); 
 	
-
+	delete snp;
 }
 
 void simple_snp_with_delays(int alg, int verbosity_lv, int repetitions, char* outfile){
@@ -146,5 +146,7 @@ void simple_snp_with_delays(int alg, int verbosity_lv, int repetitions, char* ou
 	snp->add_synapse(2,0);
 	
 	snp->compute();
+	delete snp;
+
 }
 

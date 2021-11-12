@@ -9,6 +9,10 @@ typedef unsigned short int  ushort;
 typedef unsigned int        uint;
 typedef unsigned char       uchar;
 
+#include <iostream>
+#include <fstream>
+using namespace std;
+
 class SNP_model
 {
 public:
@@ -20,7 +24,9 @@ public:
     *   output to a file is intended
     */
     void set_snpconfig(int verbosity_lv, int repetitions, char* outfile); 
-
+    /** Writes computed configuration to file 
+    */
+    void write_to_file();
     /** 
      * Set a number of spikes, given by s, in the neuron nid.
      * This method should be used to create the initial configuration.
@@ -41,16 +47,16 @@ public:
     /** 
      * Perform a transition step on the model. 
      * Returns if no more steps can be done. */
-    bool transition_step();
+    bool transition_step(int i=-1);
     /**
      * Prints configuration vector. If cpu not updated, downloads it from gpu first.
      */
-    void print_conf_vector();
+    void print_conf_vector(ofstream *fs=NULL);
     /** 
      * Simulate a computation of the model. 
      * Optionally, set a limit to l steps */
     //  void compute(int l=3) { while(l--) {transition_step();} };
-    void compute() { while(transition_step()); };
+    void compute(int i=-1); //(optional) provide a number of times for the exact times the computations will be performed. Pass -1 to ignore parameter.
 
 protected:
     uint n;        // number of neurons

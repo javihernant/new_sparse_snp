@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h> //#define assert
+#include <assert.h>
 #include <cuda.h>
 #include "snp_model.hpp"
 #include "error_check.hpp"
+// basic file operations
+#include <iostream>
+#include <fstream>
 
 using namespace std;
 
@@ -71,6 +74,7 @@ SNP_model::~SNP_model()
     free(this->rules.nid);
     free(this->calc_next_trans);
     free(this->delays_vector);
+    free(this->outfile);
 
     cudaFree(this->d_conf_vector);
     cudaFree(this->d_spiking_vector);
@@ -86,15 +90,32 @@ SNP_model::~SNP_model()
     cudaFree(this->d_delays_vector);
 }
 
-void SNP_model::print_conf_vector (){
+__global__ void k_print_conf_v(uint *conf_v, int n){
+    printf("Configuration vector(gpu memory)\n");
+    for(int i=0; i<n; i++){
+        printf("%d ",conf_v[i]);
+    }
+    printf("\n");
+}
+
+void SNP_model::print_conf_vector (ofstream *fs){
     //////////////////////////////////////////////////////
     assert(gpu_updated || cpu_updated);
     if (!cpu_updated) load_to_cpu();
     //////////////////////////////////////////////////////
     
-    printf("Configuration vector\n");
+    if(fs != NULL){
+        *fs << "Configuration vector\n";
+    }else{
+        printf("Configuration vector\n");
+    }
+    
     for(int i=0; i<n; i++){
-        printf("%d ",conf_vector[i]);
+        if(fs != NULL){
+            *fs << conf_vector[i] << " ";
+        }else{
+            printf("%d ",conf_vector[i]);
+        }   
     }
     printf("\n");
 }
@@ -103,6 +124,13 @@ void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile)
     this->verbosity_lv = verbosity_lv;
     this->repetitions = repetitions;
     this->outfile = outfile;
+}
+
+void SNP_model::write_to_file(){
+    ofstream myfile(this->outfile);
+    myfile<<"Computation performed in " << this->step << " steps\n";
+    print_conf_vector(&myfile);
+    myfile.close();
 }
 
 void SNP_model::set_spikes (uint nid, uint s)
@@ -176,17 +204,10 @@ void SNP_model::add_synapse (uint i, uint j)
 
     include_synapse(i,j);
 }
-__global__ void k_print_conf_v(uint *conf_v, int n){
-    printf("Configuration vector(gpu memory)\n");
-    for(int i=0; i<n; i++){
-        printf("%d ",conf_v[i]);
-    }
-    printf("\n");
-}
 
 
 
-bool SNP_model::transition_step ()
+bool SNP_model::transition_step (int i)
 {
     //////////////////////////////////////////////////////
     // check memory consistency, who has the updated copy?
@@ -198,7 +219,6 @@ bool SNP_model::transition_step ()
         print_conf_vector();
     }
     cpu_updated = false;
-
     bool calc_next = false;
 
     calc_spiking_vector();
@@ -206,7 +226,7 @@ bool SNP_model::transition_step ()
         print_spiking_vector();
         print_delays_vector();
     }
-    calc_next = check_next_trans();
+    calc_next = (i>0) || ((i==-1) && check_next_trans());
     
     if(calc_next){
         if(verbosity_lv >= 2){
@@ -215,16 +235,27 @@ bool SNP_model::transition_step ()
         }
 
         calc_transition();
+        if(i==1){
+            load_to_cpu();
+        }
         if(verbosity_lv >= 2){
             print_conf_vector();
         }
         step++;
-        return calc_next;
-    }
-    
-    if(verbosity_lv==1){
-        printf("\nstep #%d\n",step);
-        print_conf_vector();
+    }else{
+        if(verbosity_lv==1){
+
+            /*if i counter is active, we want the exact configuration vector as it was computed after i number of steps. 
+            Keep in mind that calc_spiking_vector() modifies conf_vector, so after check_next_trans(), conf_vector would have changed.
+            By setting cpu_updated flag, we can bypass this so that print_conf_vector() wont find it necessary to load_to_cpu(),
+            and in turn, it wont print the latest conf_vector calculated, but the one after i steps are performed */
+            if(i==0){
+                cpu_updated = true;
+            }
+            print_conf_vector();
+        }else{
+            cpu_updated = true;
+        }
     }
 
     return calc_next; 
@@ -264,5 +295,17 @@ void SNP_model::load_to_cpu ()
     cudaMemcpy(conf_vector, d_conf_vector, sizeof(uint)*n, cudaMemcpyDeviceToHost);
 }
 
+void SNP_model::compute(int i){
+
+    while(transition_step(i)){
+        if(i>0){
+            i--;
+        }
+    };
+
+    if(this->outfile != NULL){
+        write_to_file();
+    }
+}
 
 
