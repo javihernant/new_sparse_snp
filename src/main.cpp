@@ -7,7 +7,7 @@
 #include "tests.hpp"
 #include <getopt.h>
 
-typedef void(*Samples)(int, int, int, char*, int);
+typedef void(*Samples)(int, int, int, char*, bool, bool);
 
 void print_usage(char* argv[]){
 
@@ -24,11 +24,12 @@ void print_usage(char* argv[]){
 	printf("\t0 = No compression\n");
 	printf("\t1 = ELL\n");
 	printf("\t2 = OPTIMIZED\n");
-	printf("\n [OPTIONS] available (optional):\n");
+	printf("\n[OPTIONS] available (optional):\n");
 	printf("\t[-o outfile] = Writes to outfile last configuration computed\n");
 	printf("\t[-r repetitions] = Repeat the whole computation \"repetition\" times\n");
 	printf("\t[-v level] = Set a level of verbosity\n");
 	printf("\t[-t] = Set flag to measure execution time\n");
+	printf("\t[-m] = Set flag for memory usage info\n");
 	// printf("\t1 = GPU lineal algebra CUBLAS\n");
 	// printf("\t2 = GPU sparse representation CUSPARSE\n");
 	// TODO: Read input file of an snp
@@ -45,10 +46,11 @@ int main(int argc, char* argv[])
 	char* outfile = NULL;
 	int repetitions = 0;
 	int verbosity = 0;
-	int count_time = 0;
+	bool count_time = false;
+	bool mem_info = false;
 	
 	char opt;
-	while ((opt = getopt(argc, argv, "e:a:o:r:v:t")) != -1) {
+	while ((opt = getopt(argc, argv, "e:a:o:r:v:tm")) != -1) {
 		switch (opt) {
                 case 'e':
                 	example = atoi(optarg);
@@ -69,7 +71,10 @@ int main(int argc, char* argv[])
 				   verbosity = atoi(optarg);
 				   break;
 				case 't':
-					count_time = 1;
+					count_time = true;
+					break;
+				case 'm':
+					mem_info = true;
 					break;
 			   	default:
                    	print_usage(argv);
@@ -87,7 +92,7 @@ int main(int argc, char* argv[])
 	
 
 	Samples samples[] = {&simple_snp, &sort_numbers_snp, &simple_snp_with_delays};
-	samples[example](algorithm, verbosity, repetitions, outfile, count_time);
+	samples[example](algorithm, verbosity, repetitions, outfile, count_time, mem_info);
 	
 	//params.debug=1;	
 	//while (!vars.halt) {

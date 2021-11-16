@@ -23,7 +23,7 @@ public:
     *   computation is repeated and whether write of the 
     *   output to a file is intended
     */
-    void set_snpconfig(int verbosity_lv, int repetitions, char* outfile, int count_time); 
+    void set_snpconfig(int verbosity_lv, int repetitions, char* outfile, bool count_time, bool get_mem_info=false); 
     /** Writes computed configuration to file 
     */
     void write_to_file();
@@ -97,8 +97,9 @@ protected:
     int verbosity_lv;
     int repetitions;
     char *outfile;
-    int count_time;
+    bool count_time;
     int step;                   // Step in which the computation is in
+    bool get_mem_info;
 
     // auxiliary methods
     /** 

@@ -120,11 +120,12 @@ void SNP_model::print_conf_vector (ofstream *fs){
     printf("\n");
 }
 
-void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile, int count_time){
+void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile, bool count_time, bool get_mem_info){
     this->verbosity_lv = verbosity_lv;
     this->repetitions = repetitions;
     this->outfile = outfile;
     this->count_time = count_time;
+    this->get_mem_info = get_mem_info;
 }
 
 void SNP_model::write_to_file(){
@@ -308,6 +309,15 @@ void SNP_model::compute(int i){
             i--;
         }
     };
+  
+    if(get_mem_info){
+        size_t free_bytes;
+        size_t total_bytes;
+        cuda_check(cudaMemGetInfo(&free_bytes, &total_bytes));
+        double used_mem = (total_bytes - free_bytes)/1024/1024;
+        printf("Used memory: %f MB\n", used_mem);
+    }
+    
 
     if(count_time){
         cuda_check( cudaEventRecord(stop, 0) );

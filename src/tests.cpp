@@ -32,11 +32,11 @@ SNP_model* init_alg(int algorithm, int neurons, int rules){
 }
 
 
-void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile, int count_time){
+void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile, bool count_time, bool mem_info){
 	int neurons = 3;
     int rules = 5; 
 	SNP_model *snp = init_alg(alg, neurons, rules);
-    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time);
+    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time, mem_info);
     int C0[3] = {2,1,1};
 	
     for (int i=0; i<neurons; i++){
@@ -60,7 +60,7 @@ void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile, int c
 	delete snp;
 }
 
-void sort_numbers_snp(int alg, int verbosity_lv, int repetitions, char* outfile, int count_time){
+void sort_numbers_snp(int alg, int verbosity_lv, int repetitions, char* outfile, bool count_time, bool mem_info){
 	int size = 50; //adjust to choose how many numbers are sorted
 	int nums[size]; //natural numbers sorted in descended order
 	for (int i=size; i>0; i--){
@@ -71,7 +71,7 @@ void sort_numbers_snp(int alg, int verbosity_lv, int repetitions, char* outfile,
 	int m = size + size*size; //each neuron in the first layer has one rule. Each neuron in the second layer has size (of the array of nums to be sorted) rules. There are "size" neurons in each layer (input, second, output).
 
 	SNP_model *snp = init_alg(alg, n, m);
-    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time);
+    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time, mem_info);
 
 	//set spikes of neurons in first layer and add their rules
 	for(int i=0; i<size; i++){
@@ -115,14 +115,14 @@ void sort_numbers_snp(int alg, int verbosity_lv, int repetitions, char* outfile,
 	delete snp;
 }
 
-void simple_snp_with_delays(int alg, int verbosity_lv, int repetitions, char* outfile, int count_time){
+void simple_snp_with_delays(int alg, int verbosity_lv, int repetitions, char* outfile, bool count_time, bool mem_info){
 	
 	//Loading one SNP model
 	uint m = 5; //num reglas
 	uint n = 3; //num neuronas
 
 	SNP_model *snp = init_alg(alg, n, m);
-    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time);
+    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time, mem_info);
 	
 	int C0[3] = {0,1,1};
 	for (uint i=0; i<n; i++){
