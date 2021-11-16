@@ -115,8 +115,6 @@ protected:
     // @override define this method to include a synapse in the transition matrix 
     virtual void include_synapse(uint i, uint j) = 0;
     // @override define this method to send the transition matrix to GPU
-    virtual void load_spiking_vector() = 0;
-    // @override define this method to send the transition matrix to GPU
     virtual void load_transition_matrix() = 0;
     // @override define method to obtain spiking vector
     virtual void calc_spiking_vector() = 0;

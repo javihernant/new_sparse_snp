@@ -15,18 +15,13 @@ SNP_model* init_alg(int algorithm, int neurons, int rules){
 	switch (algorithm)
 	{
 		case NO_COMPRESSION:
-			return new SNP_static_sparse(neurons, rules); 
-			//init_params(MAP1,n,0.15,DEBUG,algorithm,&params);
-			//init_vars(8,10,&params,&vars);
+			return new SNP_static_sparse(neurons, rules);
 		break;
 		case ELL:
 			return new SNP_static_ell(neurons, rules);
-			//init_params(MAP2,n,0.15,DEBUG,algorithm,&params);
-			//init_vars(32,9.3,&params,&vars);
 		break;
 		case OPTIMIZED:
-			//init_params(MAP3,n,0.15,DEBUG,algorithm,&params);
-			//init_vars(21.5,21.5,&params,&vars);
+			return new SNP_static_optimized(neurons, rules);
 		break;		
 		default:
 			printf("Invalid algorithm\n");

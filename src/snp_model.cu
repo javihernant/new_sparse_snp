@@ -280,7 +280,6 @@ void SNP_model::load_to_gpu ()
     cudaMemcpy(d_rules.d,       rules.d,        sizeof(uint)*m,    cudaMemcpyHostToDevice);
     cudaMemcpy(d_rules.nid,     rules.nid,      sizeof(uint)*m,     cudaMemcpyHostToDevice);
 
-    load_spiking_vector();
     load_transition_matrix();
 }
 
