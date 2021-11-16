@@ -38,7 +38,7 @@ XCC=$(NCC)
 XLD=$(NLDFlags)
 
 ifeq ($(dbg),1)
-	CFlags += -O0 -g
+	CFlags += -O0 -g -Wall
 	NCFlags += -O0 -g
 else	
 	CFlags += -O3

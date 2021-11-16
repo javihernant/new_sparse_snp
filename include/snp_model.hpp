@@ -23,7 +23,7 @@ public:
     *   computation is repeated and whether write of the 
     *   output to a file is intended
     */
-    void set_snpconfig(int verbosity_lv, int repetitions, char* outfile); 
+    void set_snpconfig(int verbosity_lv, int repetitions, char* outfile, int count_time); 
     /** Writes computed configuration to file 
     */
     void write_to_file();
@@ -65,7 +65,7 @@ protected:
     // CPU part
     uint *delays_vector;
     uint *conf_vector;     // configuration vector (# neurons)
-    uint *trans_matrix;    // transition matrix (# rules * # neurons)
+    int *trans_matrix;    // transition matrix (# rules * # neurons)
     int *spiking_vector;  // spiking vector (# neurons)
     int   *rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
 
@@ -80,10 +80,10 @@ protected:
 
     // GPU counterpart
     uint *d_delays_vector;
-    uint * d_conf_vector;
-    uint  * d_trans_matrix;
-    int * d_spiking_vector;
-    int   * d_rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
+    uint *d_conf_vector;
+    int *d_trans_matrix;
+    int *d_spiking_vector;
+    int *d_rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
 
     // Consistency flags
     bool gpu_updated;           // true if GPU copy is updated
@@ -97,6 +97,7 @@ protected:
     int verbosity_lv;
     int repetitions;
     char *outfile;
+    int count_time;
     int step;                   // Step in which the computation is in
 
     // auxiliary methods

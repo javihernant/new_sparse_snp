@@ -31,16 +31,16 @@ SNP_model::SNP_model(uint n, uint m)
     this->calc_next_trans = (bool*) malloc(sizeof(bool));
 
     // allocation in GPU
-    cudaMalloc(&this->d_conf_vector,   sizeof(uint)*n);
-    cudaMalloc(&this->d_delays_vector,   sizeof(uint)*n);
-    cudaMalloc(&this->d_rule_index,    sizeof(int)*(n+1));
-    cudaMalloc(&this->d_rules.Ei,      sizeof(uint)*m);
-    cudaMalloc(&this->d_rules.En,      sizeof(uint)*m);
-    cudaMalloc(&this->d_rules.c,       sizeof(uint)*m);
-    cudaMalloc(&this->d_rules.p,       sizeof(uint)*m);
-    cudaMalloc(&this->d_rules.d,       sizeof(uint)*m);
-    cudaMalloc(&this->d_rules.nid,     sizeof(uint)*m);
-    cudaMalloc(&this->d_calc_next_trans, sizeof(bool));
+    cuda_check(cudaMalloc(&this->d_conf_vector,   sizeof(uint)*n));
+    cuda_check(cudaMalloc(&this->d_delays_vector,   sizeof(uint)*n));
+    cuda_check(cudaMalloc(&this->d_rule_index,    sizeof(int)*(n+1)));
+    cuda_check(cudaMalloc(&this->d_rules.Ei,      sizeof(uint)*m));
+    cuda_check(cudaMalloc(&this->d_rules.En,      sizeof(uint)*m));
+    cuda_check(cudaMalloc(&this->d_rules.c,       sizeof(uint)*m));
+    cuda_check(cudaMalloc(&this->d_rules.p,       sizeof(uint)*m));
+    cuda_check(cudaMalloc(&this->d_rules.d,       sizeof(uint)*m));
+    cuda_check(cudaMalloc(&this->d_rules.nid,     sizeof(uint)*m));
+    cuda_check(cudaMalloc(&this->d_calc_next_trans, sizeof(bool)));
 
     // initialization (only in CPU, having updated version)
     memset(this->conf_vector,   0,  sizeof(uint)*n);
@@ -120,10 +120,11 @@ void SNP_model::print_conf_vector (ofstream *fs){
     printf("\n");
 }
 
-void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile){
+void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile, int count_time){
     this->verbosity_lv = verbosity_lv;
     this->repetitions = repetitions;
     this->outfile = outfile;
+    this->count_time = count_time;
 }
 
 void SNP_model::write_to_file(){
@@ -296,12 +297,26 @@ void SNP_model::load_to_cpu ()
 }
 
 void SNP_model::compute(int i){
-
+    float time;
+    cudaEvent_t start, stop;    
+    if(count_time){
+        cuda_check( cudaEventCreate(&start) );
+        cuda_check( cudaEventCreate(&stop) );
+        cuda_check( cudaEventRecord(start, 0) );
+    }
     while(transition_step(i)){
         if(i>0){
             i--;
         }
     };
+
+    if(count_time){
+        cuda_check( cudaEventRecord(stop, 0) );
+        cuda_check( cudaEventSynchronize(stop) );
+        cuda_check( cudaEventElapsedTime(&time, start, stop) );
+
+        printf("Execution time: %3.1f ms\n", time);
+    }
 
     if(this->outfile != NULL){
         write_to_file();
