@@ -72,7 +72,27 @@ SNP_static_cublas::SNP_static_cublas(uint n, uint m) : SNP_model(n,m,true)
     //Allocate device variables
     cuda_check(cudaMalloc(&this->d_spiking_vector,  sizeof(float)*m));
     cuda_check(cudaMalloc(&this->d_trans_matrix,  sizeof(float)*n*m));
-    
+}
+
+SNP_static_cusparse::SNP_static_cusparse(uint n, uint m) : SNP_model(n,m,true)
+{
+    this->alpha = 1.0f;
+    this->beta = 1.0f;
+    this->nnz=0;
+    //Allocate cpu variables
+    cuda_check(cusparseCreate(&this->handle));
+    this->neuron_to_include = 0;
+    this->trans_matrix    = (int*)  malloc(sizeof(int)*n*m);
+    this -> spiking_vector = (float*) malloc(sizeof(float)*m);
+
+    memset(this->trans_matrix,0,sizeof(int)*n*m);
+
+    //Allocate device variables
+    cuda_check(cudaMalloc(&this->d_spiking_vector,  sizeof(float)*m));
+    cuda_check(cudaMalloc(&this->d_trans_matrix, sizeof(int)*n*m));
+
+    cuda_check( cusparseCreateDnVec(&(this->cse_confv), n, this->df_conf_vector, CUDA_R_32F) );
+    cuda_check( cusparseCreateDnVec(&(this->cse_spkv), m, this->d_spiking_vector, CUDA_R_32F) );
 }
 
 /** Free mem */
@@ -88,8 +108,26 @@ SNP_static_optimized::~SNP_static_optimized()
 
 SNP_static_cublas::~SNP_static_cublas()
 {
+    free(this->f_conf_vector);
+    cudaFree(this->df_conf_vector);
     cudaFree(this->d_spiking_vector);
     cudaFree(this->d_trans_matrix);
+    cublasDestroy(this->handle);
+}
+
+SNP_static_cusparse::~SNP_static_cusparse()
+{
+    free(this->f_conf_vector);
+    cudaFree(this->df_conf_vector);
+    cudaFree(this->d_spiking_vector);
+    cudaFree(this->d_trans_matrix);
+    cuda_check(cusparseDestroySpMat(cse_trans_mx));
+    cuda_check(cusparseDestroyDnVec(cse_confv));
+    cuda_check(cusparseDestroyDnVec(cse_spkv));
+    cuda_check(cusparseDestroy(this->handle));
+    cuda_check( cudaFree(&this->d_csrOffsets));
+    cuda_check( cudaFree(&this->d_csrColumns));
+    cuda_check( cudaFree(&this->d_csrValues));
 }
 
 void SNP_static_sparse::print_transition_matrix(){
@@ -133,9 +171,21 @@ void SNP_static_optimized::print_transition_matrix(){
 }
 
 void SNP_static_cublas::print_transition_matrix(){
+    printf("Transition matrix\n");
     for (int j=0; j<m; j++){
 		for (int i=0; i<n; i++){
             printf("%.1f ",trans_matrix[i*m + j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+}
+
+void SNP_static_cusparse::print_transition_matrix(){
+    printf("Transition matrix\n");
+    for (int j=0; j<m; j++){
+		for (int i=0; i<n; i++){
+            printf("%d ",trans_matrix[i*m + j]);
 		}
 		printf("\n");
 	}
@@ -201,6 +251,11 @@ void SNP_static_cublas::print_spiking_vector(){
     cudaDeviceSynchronize();
 }
 
+void SNP_static_cusparse::print_spiking_vector(){
+    k_print_spk_v_generic<<<1,1>>>(d_spiking_vector, m);
+    cudaDeviceSynchronize();
+}
+
 void SNP_static_sparse::print_delays_vector(){
     k_print_dys_v_generic<<<1,1>>>(d_delays_vector, n);
     cudaDeviceSynchronize();
@@ -217,6 +272,10 @@ void SNP_static_optimized::print_delays_vector(){
 }
 
 void SNP_static_cublas::print_delays_vector(){
+    //intentionally left blank
+}
+
+void SNP_static_cusparse::print_delays_vector(){
     //intentionally left blank
 }
 
@@ -335,6 +394,21 @@ void SNP_static_cublas::calc_spiking_vector()
     cudaDeviceSynchronize();
 }
 
+void SNP_static_cusparse::calc_spiking_vector() 
+{
+    //////////////////////////////////////////////////////
+    cpu_updated = false;
+    //////////////////////////////////////////////////////
+
+    uint bs = 256;
+    uint gs = (m+255)/256;
+    
+    cuda_check(cudaMemset(this->d_spiking_vector, 0, sizeof(float)*m));
+    kalc_spiking_vector_for_libs<<<gs,bs>>>(d_spiking_vector, df_conf_vector, d_rule_index, d_rules.Ei, d_rules.En, n);
+    cuda_check(cudaGetLastError());
+    cudaDeviceSynchronize();
+}
+
 void SNP_static_sparse::include_synapse(uint i, uint j)
 {
     for (int r = rule_index[i]; r < rule_index[i+1]; r++) {
@@ -367,6 +441,15 @@ void SNP_static_cublas::include_synapse(uint i, uint j)
     for (int r = rule_index[i]; r < rule_index[i+1]; r++) {
         trans_matrix[i*m+r] = -(float)rules.c[r];  
         trans_matrix[j*m+r] = (float) rules.p[r];
+    }
+}
+
+void SNP_static_cusparse::include_synapse(uint i, uint j)
+{
+    //store by columns for better VxM performance
+    for (int r = rule_index[i]; r < rule_index[i+1]; r++) {
+        trans_matrix[i*m+r] = -(int)rules.c[r];  
+        trans_matrix[j*m+r] = (int) rules.p[r];
     }
 }
 
@@ -414,6 +497,69 @@ void SNP_static_cublas::load_transition_matrix ()
         neuron_to_include++;
     }
     cuda_check(cudaMemcpy(d_trans_matrix, trans_matrix, sizeof(float)*n*m, cudaMemcpyHostToDevice));
+}
+
+int SNP_static_cusparse::get_nnz (){
+    int nnz = 0;
+    for (int i=0; i<n; i++){
+		for (int j=0; j<m; j++){
+            if(trans_matrix[i*m + j] != 0){
+              nnz++;  
+            }
+		}
+	}
+
+    return nnz;
+}
+
+__global__ void gen_CSR_vectors(int * trans_matrix, int nrows, int ncols, int * csrOffsets, int * csrColumns, float* csrValues){
+    int i_nz = 0; 
+    csrOffsets[0]=0;
+    for(int i=0; i<nrows; i++){
+        for(int j=0; j<ncols; j++){
+            if(trans_matrix[i*ncols + j]!=0){
+                csrColumns[i_nz] = j;
+                // printf("csrColumn[%d]=%d\n",i_nz,j);
+                csrValues[i_nz] = trans_matrix[i*ncols + j];
+                // printf("csrValues[%d]=%d\n",i_nz,trans_matrix[i*ncols + j]);
+                i_nz++;
+            }
+        }
+        csrOffsets[i+1]=i_nz;
+        // printf("csrOffset[%d]=%d\n",i+1,i_nz);
+    }
+}
+
+void SNP_static_cusparse::load_transition_matrix () 
+{
+    //if a neuron doesnt include synapses, then rules of that neuron are not included in transition matrix (so forgetting rules are ignored). 
+    while(neuron_to_include < n){
+        for(int r=rule_index[neuron_to_include]; r<rule_index[neuron_to_include+1]; r++){
+            trans_matrix[neuron_to_include*m + r] = -rules.c[r];
+        }
+        neuron_to_include++;
+    }
+
+    int nnz = get_nnz();
+    cuda_check( cudaMalloc(&this->d_csrOffsets,   sizeof(int)*n));
+    cuda_check( cudaMalloc(&this->d_csrColumns,   sizeof(int)*nnz));
+    cuda_check( cudaMalloc(&this->d_csrValues,   sizeof(float)*nnz));
+    cuda_check(cudaMemcpy(d_trans_matrix,  trans_matrix,   sizeof(int)*n*m,  cudaMemcpyHostToDevice)); 
+    gen_CSR_vectors<<<1,1>>>(d_trans_matrix, n, m, d_csrOffsets,d_csrColumns, d_csrValues);
+    cudaDeviceSynchronize();
+
+    cuda_check( cusparseCreateCsr(&this->cse_trans_mx, n, m, nnz,
+    d_csrOffsets, d_csrColumns, d_csrValues,
+    CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+    CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) );
+    
+
+    size_t buffer_size;
+    cuda_check( cusparseSpMV_bufferSize(
+    this->handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+    &alpha, this->cse_trans_mx, this->cse_spkv, &beta, this->cse_confv, CUDA_R_32F,
+    CUSPARSE_MV_ALG_DEFAULT, &buffer_size) );
+    cuda_check( cudaMalloc(&this->d_buffer,   buffer_size));
 }
 
 __global__ void kalc_transition_sparse(int* spiking_vector, int* trans_matrix, uint* conf_vector,uint * delays_vector, uint * rnid , uint n, uint m){
@@ -542,6 +688,13 @@ bool SNP_static_cublas::check_next_trans(){
     return calc_next_trans[0];
 }
 
+bool SNP_static_cusparse::check_next_trans(){
+    k_check_next_trans_for_libs<<<1,1>>>(d_calc_next_trans, d_spiking_vector, n);
+    cudaDeviceSynchronize();
+    cuda_check(cudaMemcpy(calc_next_trans, d_calc_next_trans, sizeof(bool),cudaMemcpyDeviceToHost));
+    return calc_next_trans[0];
+}
+
 void SNP_static_sparse::calc_transition()
 {
     //////////////////////////////////////////////////////
@@ -587,4 +740,12 @@ void SNP_static_cublas::calc_transition()
     float bet =1.0f;
     
     cuda_check(cublasSgemv(handle,CUBLAS_OP_T,m,n,&al,d_trans_matrix,m,d_spiking_vector,1,&bet,df_conf_vector,1));
+}
+
+void SNP_static_cusparse::calc_transition()
+{
+    
+    cuda_check( cusparseSpMV(this->handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &this->alpha, cse_trans_mx, cse_spkv, &this->beta, cse_confv, CUDA_R_32F,
+        CUSPARSE_MV_ALG_DEFAULT, d_buffer));
 }

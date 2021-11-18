@@ -2,6 +2,7 @@
 #define _ERROR_CHECK_HPP_
 
 #include "cuda_runtime.h"
+#include <cusparse.h> 
 
 #define cuda_check(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
@@ -58,13 +59,13 @@ inline void gpuAssert(cublasStatus_t code, const char *file, int line, bool abor
     }
 }
 
-// inline void gpuAssert(cusparseStatus_t code, const char *file, int line, bool abort=true)
-// {
-//    if (code != CUSPARSE_STATUS_SUCCESS) 
-//    {
-//       fprintf(stderr,"cuSPARSE: %s (%d) %s %d\n", cusparseGetErrorString(code), code, file, line);
-//       if (abort) exit(code);
-//    }
-// }
+inline void gpuAssert(cusparseStatus_t code, const char *file, int line, bool abort=true)
+{
+   if (code != CUSPARSE_STATUS_SUCCESS) 
+   {
+      fprintf(stderr,"cuSPARSE: %s (%d) %s %d\n", cusparseGetErrorString(code), code, file, line);
+      if (abort) exit(code);
+   }
+}
 
 #endif

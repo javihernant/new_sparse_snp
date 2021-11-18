@@ -17,7 +17,10 @@ SNP_model* init_alg(int algorithm, int neurons, int rules){
 		break;
 		case GPU_CUBLAS:
 			return new SNP_static_cublas(neurons, rules);
-		break;				
+		break;	
+		case GPU_CUSPARSE:
+			return new SNP_static_cusparse(neurons, rules);
+		break;			
 		default:
 			printf("Invalid algorithm\n");
 			exit(0);
