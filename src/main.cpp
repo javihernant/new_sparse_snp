@@ -18,12 +18,14 @@ void print_usage(char* argv[]){
 	printf("\n[example] is the example index:\n");
 	printf("\t0 = simple SNP\n");
 	printf("\t1 = sorting of natural numbers\n");
-	printf("\t2 = simple SNP with delays\n");
-	printf("\t3 = subset sum\n");
+	printf("\t2 = simple SNP (with delays)\n");
+	printf("\t3 = subset sum (with delays)\n");
 	printf("\n[algorithm] is the algorithm index\n");
 	printf("\t0 = No compression\n");
 	printf("\t1 = ELL\n");
 	printf("\t2 = OPTIMIZED\n");
+	printf("\t3 = cuBLAS (use only with examples that doesn't use delays)\n");
+	printf("\t4 = cuSPARSE (use only with examples that doesn't use delays)\n");
 	printf("\n[OPTIONS] available (optional):\n");
 	printf("\t[-o outfile] = Writes to outfile last configuration computed\n");
 	printf("\t[-r repetitions] = Repeat the whole computation \"repetition\" times\n");
@@ -54,12 +56,19 @@ int main(int argc, char* argv[])
 		switch (opt) {
                 case 'e':
                 	example = atoi(optarg);
-					if(example > 3) print_usage(argv);
+					if(example > 3) {
+						print_usage(argv);
+						printf("\n\nERROR: Selected example does not exist\n");
+						return 0;
+					}
                   	break;
                	case 'a':
 					algorithm = atoi(optarg);
-
-					if(algorithm > 2) print_usage(argv);
+					if(algorithm > 4){
+						print_usage(argv);
+						printf("\n\nERROR: Selected algorithm does not exist\n");
+						return 0;
+					}
 					break;
 			   	case 'o':
 					outfile = strdup(optarg);
@@ -89,7 +98,11 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	
+	if((algorithm == GPU_CUBLAS || algorithm == GPU_CUSPARSE )&& example >= 2){
+		print_usage(argv);
+		printf("\n\nERROR: That algorithm can only be used with examples that doesn't use delays\n");
+		return 0;
+	}
 
 	Samples samples[] = {&simple_snp, &sort_numbers_snp, &simple_snp_with_delays};
 	samples[example](algorithm, verbosity, repetitions, outfile, count_time, mem_info);

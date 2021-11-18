@@ -2,14 +2,6 @@
 #include <iostream>
 #include <new>
 
-// Algorithms
-
-#define NO_COMPRESSION		0
-#define ELL 				1
-#define OPTIMIZED			2
-// #define GPU_CUBLAS 			3
-// #define GPU_CUSPARSE	 		4
-
 
 SNP_model* init_alg(int algorithm, int neurons, int rules){
 	switch (algorithm)
@@ -22,7 +14,10 @@ SNP_model* init_alg(int algorithm, int neurons, int rules){
 		break;
 		case OPTIMIZED:
 			return new SNP_static_optimized(neurons, rules);
-		break;		
+		break;
+		case GPU_CUBLAS:
+			return new SNP_static_cublas(neurons, rules);
+		break;				
 		default:
 			printf("Invalid algorithm\n");
 			exit(0);

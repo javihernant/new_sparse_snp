@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <cuda.h>
 #include "snp_model.hpp"
 #include "error_check.hpp"
 // basic file operations
@@ -10,17 +9,17 @@
 
 using namespace std;
 
+
 /** Allocation */
-SNP_model::SNP_model(uint n, uint m)
+SNP_model::SNP_model(uint n, uint m, bool using_lib)
 {
+    this->using_lib = using_lib;
     this->step = 0;
-    this->cpu_updated = 1;
-    this->gpu_updated = 0;
+    this->done_rules = false;
     // allocation in CPU
     this->n = n;  // number of neurons
     this->m = m;  // number of rules
-    this->conf_vector     = (uint*) malloc(sizeof(uint)*n); // configuration vector (only one, we simulate just a computation)
-    this->delays_vector = (uint*) malloc(sizeof(uint)*n); 
+    
     this->rule_index      = (int*)   malloc(sizeof(int)*(n+1)); // indeces of rules inside neuron (start index per neuron)
     this->rules.Ei        = (uint*)  malloc(sizeof(uint)*m); // Regular expression Ei of a rule
     this->rules.En        = (uint*)  malloc(sizeof(uint)*m); // Regular expression En of a rule
@@ -31,8 +30,7 @@ SNP_model::SNP_model(uint n, uint m)
     this->calc_next_trans = (bool*) malloc(sizeof(bool));
 
     // allocation in GPU
-    cuda_check(cudaMalloc(&this->d_conf_vector,   sizeof(uint)*n));
-    cuda_check(cudaMalloc(&this->d_delays_vector,   sizeof(uint)*n));
+    
     cuda_check(cudaMalloc(&this->d_rule_index,    sizeof(int)*(n+1)));
     cuda_check(cudaMalloc(&this->d_rules.Ei,      sizeof(uint)*m));
     cuda_check(cudaMalloc(&this->d_rules.En,      sizeof(uint)*m));
@@ -43,8 +41,7 @@ SNP_model::SNP_model(uint n, uint m)
     cuda_check(cudaMalloc(&this->d_calc_next_trans, sizeof(bool)));
 
     // initialization (only in CPU, having updated version)
-    memset(this->conf_vector,   0,  sizeof(uint)*n);
-    memset(this->delays_vector,   0,  sizeof(uint)*n);
+    
     memset(this->rule_index,    -1,  sizeof(int)*(n+1));
     this->rule_index[0]=0;
     memset(this->rules.Ei,      0,  sizeof(uint)*m);
@@ -53,10 +50,23 @@ SNP_model::SNP_model(uint n, uint m)
     memset(this->rules.p,       0,  sizeof(uint)*m);
     memset(this->rules.d,       0,  sizeof(uint)*n);
     memset(this->rules.nid,     0,  sizeof(uint)*(m));
+
+    if(using_lib){
+        this->f_conf_vector     = (float*) malloc(sizeof(float)*n); // configuration vector (only one, we simulate just a computation)
+        cuda_check(cudaMalloc(&this->df_conf_vector,   sizeof(float)*n));
+        memset(this->f_conf_vector,   0,  sizeof(float)*n);
+    }else{
+        this->conf_vector     = (uint*) malloc(sizeof(uint)*n); // configuration vector (only one, we simulate just a computation)
+        this->delays_vector = (uint*) malloc(sizeof(uint)*n); 
+        cuda_check(cudaMalloc(&this->d_conf_vector,   sizeof(uint)*n));
+        cuda_check(cudaMalloc(&this->d_delays_vector,   sizeof(uint)*n));
+        memset(this->conf_vector,   0,  sizeof(uint)*n);
+        memset(this->delays_vector,   0,  sizeof(uint)*n);
+    }
    
     // memory consistency, who has the updated copy?
-    gpu_updated = false; cpu_updated = true;
-    done_rules = false;
+    this->cpu_updated = true;
+    this->gpu_updated = false;    
 }
 
 /** Free mem */
@@ -110,13 +120,26 @@ void SNP_model::print_conf_vector (ofstream *fs){
         printf("Configuration vector\n");
     }
     
-    for(int i=0; i<n; i++){
-        if(fs != NULL){
-            *fs << conf_vector[i] << " ";
-        }else{
-            printf("%d ",conf_vector[i]);
-        }   
+    if(using_lib){
+        for(int i=0; i<n; i++){
+            if(fs != NULL){
+                *fs << f_conf_vector[i] << " ";
+            }else{
+                printf("%.1f ",f_conf_vector[i]);
+            }   
+        }
+
+    }else{
+        for(int i=0; i<n; i++){
+            if(fs != NULL){
+                *fs << conf_vector[i] << " ";
+            }else{
+                printf("%d ",conf_vector[i]);
+            }   
+        }
+
     }
+    
     printf("\n");
 }
 
@@ -145,7 +168,13 @@ void SNP_model::set_spikes (uint nid, uint s)
     gpu_updated = false;
     //////////////////////////////////////////////////////
 
-    conf_vector[nid] = s;    
+    if(using_lib){
+        f_conf_vector[nid] = (float) s; 
+
+    }else{
+        conf_vector[nid] = s; 
+    }
+       
 }
 
 uint SNP_model::get_spikes (uint nid)
@@ -156,8 +185,13 @@ uint SNP_model::get_spikes (uint nid)
     assert(gpu_updated || cpu_updated);
     if (gpu_updated && !cpu_updated) load_to_cpu();
     //////////////////////////////////////////////////////
-
-    return conf_vector[nid];
+    int spikes;
+    if(using_lib){
+        spikes = (uint) f_conf_vector[nid];
+    }else{
+        spikes = (uint) conf_vector[nid];
+    }
+    return spikes;
 }
 
 /** Add a rule to neuron nid, regular expression defined by e_n and e_i, and a^c -> a^p.
@@ -226,7 +260,10 @@ bool SNP_model::transition_step (int i)
     calc_spiking_vector();
     if(verbosity_lv >= 3){
         print_spiking_vector();
-        print_delays_vector();
+        if(delays_vector != NULL){
+            print_delays_vector();
+        }
+        
     }
     calc_next = (i>0) || ((i==-1) && check_next_trans());
     
@@ -272,7 +309,11 @@ void SNP_model::load_to_gpu ()
     gpu_updated = true;
     //////////////////////////////////////////////////////
 
-    cudaMemcpy(d_conf_vector,   conf_vector,    sizeof(uint)*n,   cudaMemcpyHostToDevice);
+    if(using_lib){
+        cudaMemcpy(df_conf_vector,   f_conf_vector,    sizeof(float)*n,   cudaMemcpyHostToDevice);
+    }else{
+        cudaMemcpy(d_conf_vector,   conf_vector,    sizeof(uint)*n,   cudaMemcpyHostToDevice);
+    }
     cudaMemcpy(d_rule_index,    rule_index,     sizeof(uint)*(n+1), cudaMemcpyHostToDevice);
     cudaMemcpy(d_rules.Ei,      rules.Ei,       sizeof(uint)*m,    cudaMemcpyHostToDevice);
     cudaMemcpy(d_rules.En,      rules.En,       sizeof(uint)*m,    cudaMemcpyHostToDevice);
@@ -292,8 +333,13 @@ void SNP_model::load_to_cpu ()
     if (cpu_updated) return;
     cpu_updated = true;
     //////////////////////////////////////////////////////
+    
+    if(using_lib){
+        cudaMemcpy(f_conf_vector, df_conf_vector, sizeof(float)*n, cudaMemcpyDeviceToHost);
 
-    cudaMemcpy(conf_vector, d_conf_vector, sizeof(uint)*n, cudaMemcpyDeviceToHost);
+    }else{
+        cudaMemcpy(conf_vector, d_conf_vector, sizeof(uint)*n, cudaMemcpyDeviceToHost);
+    }
 }
 
 void SNP_model::compute(int i){

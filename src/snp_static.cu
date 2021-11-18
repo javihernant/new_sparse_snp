@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <cuda.h>
 #include <cuda_runtime.h>
 #include <snp_static.hpp>
 #include "error_check.hpp"
@@ -22,7 +21,6 @@ SNP_static_sparse::SNP_static_sparse(uint n, uint m) : SNP_model(n,m)
     cuda_check(cudaMalloc(&this->d_spiking_vector,sizeof(int)*m));
 
     cuda_check(cudaMemset(this->d_spiking_vector, -1, sizeof(int)*m));
-
 }
 
 SNP_static_ell::SNP_static_ell(uint n, uint m) : SNP_model(n,m)
@@ -61,6 +59,22 @@ SNP_static_optimized::SNP_static_optimized(uint n, uint m) : SNP_model(n,m)
     cuda_check(cudaMemset(this->d_spiking_vector, -1, sizeof(int)*n));
 }
 
+SNP_static_cublas::SNP_static_cublas(uint n, uint m) : SNP_model(n,m,true)
+{
+    //Allocate cpu variables
+    cuda_check(cublasCreate(&this->handle));
+    this->neuron_to_include = 0;
+    this->trans_matrix    = (float*)  malloc(sizeof(float)*n*m);
+    this -> spiking_vector = (float*) malloc(sizeof(float)*m);
+
+    memset(this->trans_matrix,0,sizeof(float)*n*m);
+
+    //Allocate device variables
+    cuda_check(cudaMalloc(&this->d_spiking_vector,  sizeof(float)*m));
+    cuda_check(cudaMalloc(&this->d_trans_matrix,  sizeof(float)*n*m));
+    
+}
+
 /** Free mem */
 SNP_static_ell::~SNP_static_ell()
 {
@@ -70,6 +84,12 @@ SNP_static_ell::~SNP_static_ell()
 SNP_static_optimized::~SNP_static_optimized()
 {
     free(this->z_vector);
+}
+
+SNP_static_cublas::~SNP_static_cublas()
+{
+    cudaFree(this->d_spiking_vector);
+    cudaFree(this->d_trans_matrix);
 }
 
 void SNP_static_sparse::print_transition_matrix(){
@@ -112,6 +132,16 @@ void SNP_static_optimized::print_transition_matrix(){
     printf("\n");
 }
 
+void SNP_static_cublas::print_transition_matrix(){
+    for (int j=0; j<m; j++){
+		for (int i=0; i<n; i++){
+            printf("%.1f ",trans_matrix[i*m + j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+}
+
 __global__ void k_print_trans_mx_sparse(int *mx, int n, int m){
     printf("Transition matrix(gpu memory)\n");
 
@@ -129,6 +159,14 @@ __global__ void k_print_spk_v_generic(int *spkv, int m){
     printf("Spiking vector\n");
     for(int i=0; i<m; i++){
         printf("%d ", spkv[i]);
+    }
+    printf("\n");
+}
+
+__global__ void k_print_spk_v_generic(float *spkv, int m){
+    printf("Spiking vector\n");
+    for(int i=0; i<m; i++){
+        printf("%.1f ", spkv[i]);
     }
     printf("\n");
 }
@@ -158,6 +196,11 @@ void SNP_static_optimized::print_spiking_vector(){
     cudaDeviceSynchronize();
 }
 
+void SNP_static_cublas::print_spiking_vector(){
+    k_print_spk_v_generic<<<1,1>>>(d_spiking_vector, m);
+    cudaDeviceSynchronize();
+}
+
 void SNP_static_sparse::print_delays_vector(){
     k_print_dys_v_generic<<<1,1>>>(d_delays_vector, n);
     cudaDeviceSynchronize();
@@ -171,6 +214,10 @@ void SNP_static_ell::print_delays_vector(){
 void SNP_static_optimized::print_delays_vector(){
     k_print_dys_v_generic<<<1,1>>>(d_delays_vector, n);
     cudaDeviceSynchronize();
+}
+
+void SNP_static_cublas::print_delays_vector(){
+    //intentionally left blank
 }
 
 __global__ void kalc_spiking_vector_generic(int* spiking_vector, uint* conf_vector, int* rule_index, uint* rei, uint* ren, uint* rc, uint* rd, uint* delays_vector, uint n)
@@ -224,6 +271,22 @@ __global__ void kalc_spiking_vector_for_optimized(int* spiking_vector, uint* con
     }
 }
 
+__global__ void kalc_spiking_vector_for_libs(float* spiking_vector, float *conf_vector, int* rule_index, uint* rei, uint* ren, uint n)
+{
+    uint nid = threadIdx.x+blockIdx.x*blockDim.x;
+    if (nid<n) {
+        for (int r=rule_index[nid]; r<rule_index[nid+1]; r++){
+            uchar e_i = rei[r];
+            uchar e_n = ren[r];
+            int x = conf_vector[nid];
+            if ((int) (e_i&(x==e_n)) || ((1-e_i)&(x>=e_n))) {
+                spiking_vector[r] = 1;
+                break;
+            }
+        }
+    }
+}
+
 void SNP_static_sparse::calc_spiking_vector() 
 {
     //////////////////////////////////////////////////////
@@ -257,6 +320,21 @@ void SNP_static_optimized::calc_spiking_vector()
     cudaDeviceSynchronize();
 }
 
+void SNP_static_cublas::calc_spiking_vector() 
+{
+    //////////////////////////////////////////////////////
+    cpu_updated = false;
+    //////////////////////////////////////////////////////
+
+    uint bs = 256;
+    uint gs = (m+255)/256;
+    
+    cuda_check(cudaMemset(this->d_spiking_vector, 0, sizeof(float)*m));
+    kalc_spiking_vector_for_libs<<<gs,bs>>>(d_spiking_vector, df_conf_vector, d_rule_index, d_rules.Ei, d_rules.En, n);
+    cuda_check(cudaGetLastError());
+    cudaDeviceSynchronize();
+}
+
 void SNP_static_sparse::include_synapse(uint i, uint j)
 {
     for (int r = rule_index[i]; r < rule_index[i+1]; r++) {
@@ -281,6 +359,15 @@ void SNP_static_optimized::include_synapse(uint i, uint j)
 {
     trans_matrix[z_vector[i]*n+i] = j;
     z_vector[i]++;
+}
+
+void SNP_static_cublas::include_synapse(uint i, uint j)
+{
+    //store by columns for better VxM performance
+    for (int r = rule_index[i]; r < rule_index[i+1]; r++) {
+        trans_matrix[i*m+r] = -(float)rules.c[r];  
+        trans_matrix[j*m+r] = (float) rules.p[r];
+    }
 }
 
 
@@ -315,6 +402,18 @@ void SNP_static_optimized::load_transition_matrix (){
     // this-> trans_matrix = (int *) realloc(this->trans_matrix,sizeof(int)*n*z);
     cuda_check(cudaMalloc((&this->d_trans_matrix),  sizeof(int)*n*z));
     cudaMemcpy(d_trans_matrix,  trans_matrix,   sizeof(int)*n*z,  cudaMemcpyHostToDevice);
+}
+
+void SNP_static_cublas::load_transition_matrix () 
+{
+    //if a neuron doesnt include synapses, then rules of that neuron are not included in transition matrix (so forgetting rules are ignored). 
+    while(neuron_to_include < n){
+        for(int r=rule_index[neuron_to_include]; r<rule_index[neuron_to_include+1]; r++){
+            trans_matrix[neuron_to_include*m + r] = -(float)rules.c[r];
+        }
+        neuron_to_include++;
+    }
+    cuda_check(cudaMemcpy(d_trans_matrix, trans_matrix, sizeof(float)*n*m, cudaMemcpyHostToDevice));
 }
 
 __global__ void kalc_transition_sparse(int* spiking_vector, int* trans_matrix, uint* conf_vector,uint * delays_vector, uint * rnid , uint n, uint m){
@@ -404,6 +503,16 @@ __global__ void k_check_next_trans(bool *calc_nxt, int* spkv, int spkv_size, uin
     }
 }
 
+__global__ void k_check_next_trans_for_libs(bool *calc_nxt, float *spkv, int spkv_size){
+    calc_nxt[0] = false;
+    for(int i=0; i<spkv_size; i++){
+        if(spkv[i] != 0){
+            calc_nxt[0] = true;
+            break;   
+        }
+    }
+}
+
 bool SNP_static_sparse::check_next_trans(){
     k_check_next_trans<<<1,1>>>(d_calc_next_trans, d_spiking_vector, m, d_delays_vector, n);
     cudaDeviceSynchronize();
@@ -421,6 +530,13 @@ bool SNP_static_ell::check_next_trans(){
 
 bool SNP_static_optimized::check_next_trans(){
     k_check_next_trans<<<1,1>>>(d_calc_next_trans, d_spiking_vector, n, d_delays_vector, n);
+    cudaDeviceSynchronize();
+    cuda_check(cudaMemcpy(calc_next_trans, d_calc_next_trans, sizeof(bool),cudaMemcpyDeviceToHost));
+    return calc_next_trans[0];
+}
+
+bool SNP_static_cublas::check_next_trans(){
+    k_check_next_trans_for_libs<<<1,1>>>(d_calc_next_trans, d_spiking_vector, n);
     cudaDeviceSynchronize();
     cuda_check(cudaMemcpy(calc_next_trans, d_calc_next_trans, sizeof(bool),cudaMemcpyDeviceToHost));
     return calc_next_trans[0];
@@ -463,4 +579,12 @@ void SNP_static_optimized::calc_transition()
     update_delays_vector_generic<<<n+255,256>>>(d_delays_vector, n);
     cuda_check(cudaGetLastError());
     cudaDeviceSynchronize();
+}
+
+void SNP_static_cublas::calc_transition()
+{
+    float al =1.0f;
+    float bet =1.0f;
+    
+    cuda_check(cublasSgemv(handle,CUBLAS_OP_T,m,n,&al,d_trans_matrix,m,d_spiking_vector,1,&bet,df_conf_vector,1));
 }

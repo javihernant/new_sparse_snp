@@ -11,12 +11,16 @@ typedef unsigned char       uchar;
 
 #include <iostream>
 #include <fstream>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include "cublas_v2.h"
+
 using namespace std;
 
 class SNP_model
 {
 public:
-    SNP_model(uint n, uint m);
+    SNP_model(uint n, uint m, bool using_lib=false);
     ~SNP_model();
     
     /** indicate verbosity level, number of times the whole
@@ -65,6 +69,7 @@ protected:
     // CPU part
     uint *delays_vector;
     uint *conf_vector;     // configuration vector (# neurons)
+    float *f_conf_vector;
     int *trans_matrix;    // transition matrix (# rules * # neurons)
     int *spiking_vector;  // spiking vector (# neurons)
     int   *rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
@@ -81,6 +86,7 @@ protected:
     // GPU counterpart
     uint *d_delays_vector;
     uint *d_conf_vector;
+    float *df_conf_vector;
     int *d_trans_matrix;
     int *d_spiking_vector;
     int *d_rule_index;      // indicates for each neuron, the starting rule index (# neurons+1)
@@ -91,8 +97,8 @@ protected:
     bool done_rules;            // true if all rules have been introduced (preventing adding synapses)
     bool *calc_next_trans;      // true if next transition has to be calculated (stored in slot 0). Host variable
     bool *d_calc_next_trans;    // Device variable
+    bool using_lib;             // true if using either cublas or cusparse libraries
     
-
     // Config variables
     int verbosity_lv;
     int repetitions;

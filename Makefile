@@ -15,7 +15,7 @@ BIN=ssnp
 #OMP=-fopenmp
 
 CFlags=-c $(OMP) #-Wall
-LDFlags=-lm $(OMP)
+LDFlags=-lm -lcublas $(OMP)
 
 ############ NVIDIA specifics
 CUDA_PATH=/usr/local/cuda-11.3
@@ -30,7 +30,7 @@ GENCODE_FLAGS   := $(GENCODE_SM20) $(GENCODE_SM35) $(GENCODE_SM60)\
                    $(GENCODE_SM61) $(GENCODE_SM75)
 #NCFlags=-c --compiler-options -Wall -Xcompiler $(OMP) $(GENCODE_FLAGS)
 NCFlags=-c $(GENCODE_FLAGS) -I$(CUDA_PATH)/include 
-NLDFlags=-lm -Xcompiler $(OMP) -L$(CUDA_PATH)/lib64
+NLDFlags=-lm -lcublas -Xcompiler $(OMP) -L$(CUDA_PATH)/lib64
 ############
 
 ############ Options for GPU and debugging
