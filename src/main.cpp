@@ -41,11 +41,11 @@ int main(int argc, char* argv[])
 	//main args
 	int algorithm = -1;
 	int example = -1;
-	int input_size = 50;
+	int input_size = -1;
 
 	//option args
 	char* outfile = NULL;
-	int repetitions = 0;
+	int repetitions = -1;
 	int verbosity = 0;
 	bool count_time = false;
 	bool mem_info = false;
@@ -117,4 +117,5 @@ int main(int argc, char* argv[])
 	//free_memory(&params,&vars);
 	
 	return 0;
+}
 

@@ -143,7 +143,7 @@ void SNP_model::print_conf_vector (ofstream *fs){
     printf("\n");
 }
 
-void SNP_model::set_snpconfig (int verbosity_lv, char *outfile, bool count_time, bool get_mem_info){
+void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile, bool count_time, bool get_mem_info){
     this->verbosity_lv = verbosity_lv;
     this->repetitions = repetitions;
     this->outfile = outfile;
@@ -152,8 +152,13 @@ void SNP_model::set_snpconfig (int verbosity_lv, char *outfile, bool count_time,
 }
 
 void SNP_model::write_to_file(){
-    ofstream myfile(this->outfile);
-    myfile<<"Computation performed in " << this->step << " steps\n";
+    ofstream myfile;
+    if(repetitions == -1){
+        myfile.open (this->outfile, ios::out | ios::trunc);
+    }else{
+        myfile.open(this->outfile, std::ios_base::app);
+    }
+    myfile<<"\nComputation performed in " << this->step << " steps\n";
     print_conf_vector(&myfile);
     myfile.close();
 }
@@ -345,7 +350,7 @@ void SNP_model::load_to_cpu ()
 void SNP_model::compute(int i){
     float time;
     cudaEvent_t start, stop;    
-    if(count_time){
+    if(count_time && repetitions == -1){
         cuda_check( cudaEventCreate(&start) );
         cuda_check( cudaEventCreate(&stop) );
         cuda_check( cudaEventRecord(start, 0) );
@@ -356,7 +361,7 @@ void SNP_model::compute(int i){
         }
     };
   
-    if(get_mem_info){
+    if(get_mem_info && this->repetitions == -1){
         size_t free_bytes;
         size_t total_bytes;
         cuda_check(cudaMemGetInfo(&free_bytes, &total_bytes));
@@ -365,7 +370,7 @@ void SNP_model::compute(int i){
     }
     
 
-    if(count_time){
+    if(count_time && this->repetitions == -1){
         cuda_check( cudaEventRecord(stop, 0) );
         cuda_check( cudaEventSynchronize(stop) );
         cuda_check( cudaEventElapsedTime(&time, start, stop) );

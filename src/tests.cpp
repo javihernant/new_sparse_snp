@@ -2,6 +2,7 @@
 #include <iostream>
 #include <new>
 #include <time.h> 
+#include "error_check.hpp"
 
 
 SNP_model* init_alg(int algorithm, int neurons, int rules){
@@ -35,7 +36,7 @@ void simple_snp(int alg, int verbosity_lv, int repetitions, char* outfile, bool 
 	int neurons = 3;
     int rules = 5; 
 	SNP_model *snp = init_alg(alg, neurons, rules);
-    snp->set_snpconfig(verbosity_lv, outfile, count_time, mem_info);
+    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time, mem_info);
     int C0[3] = {2,1,1};
 	
     for (int i=0; i<neurons; i++){
@@ -75,7 +76,7 @@ void sort_numbers_snp(int alg, int verbosity_lv, int repetitions, char* outfile,
 	int m = size + size*size; //each neuron in the first layer has one rule. Each neuron in the second layer has size (of the array of nums to be sorted) rules. There are "size" neurons in each layer (input, second, output).
 
 	SNP_model *snp = init_alg(alg, n, m);
-    snp->set_snpconfig(verbosity_lv, outfile, count_time, mem_info);
+    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time, mem_info);
 
 	//set spikes of neurons in first layer and add their rules
 	for(int i=0; i<size; i++){
@@ -126,7 +127,7 @@ void simple_snp_with_delays(int alg, int verbosity_lv, int repetitions, char* ou
 	uint n = 3; //num neuronas
 
 	SNP_model *snp = init_alg(alg, n, m);
-    snp->set_snpconfig(verbosity_lv, outfile, count_time, mem_info);
+    snp->set_snpconfig(verbosity_lv, repetitions, outfile, count_time, mem_info);
 	
 	int C0[3] = {0,1,1};
 	for (uint i=0; i<n; i++){
@@ -178,14 +179,21 @@ void testSubsetSumNonUniformDelays(int alg, int verbosity_lv, int repetitions, c
 
 	int initial_reps = repetitions;
 
-	std::srand(time(NULL));	//from now on, rules will be selected randomly in each repetition
+	float time_ms;
+    cudaEvent_t start, stop;  
+	if(count_time){
+        cuda_check( cudaEventCreate(&start) );
+        cuda_check( cudaEventCreate(&stop) );
+        cuda_check( cudaEventRecord(start, 0) );
+    }
 
+	std::srand(time(NULL));	//from now on, rules will be selected randomly in each repetition
 	while(repetitions--){
 		if(verbosity_lv>=1){
 			printf("test repetition #%d\n",initial_reps-repetitions);
 		}
 		SNP_model *snp = init_alg(alg, n, m);
-		snp->set_snpconfig(verbosity_lv, outfile, count_time, mem_info);
+		snp->set_snpconfig(verbosity_lv, initial_reps, outfile, count_time, mem_info);
 
 		for (int i=0; i<v_size+1; i++){
 			snp->set_spikes (i, 1);
@@ -246,6 +254,22 @@ void testSubsetSumNonUniformDelays(int alg, int verbosity_lv, int repetitions, c
 		
 		snp->compute(4); //4 steps at most, 2 at minimum
 	}
+
+	if(count_time){
+        cuda_check( cudaEventRecord(stop, 0) );
+        cuda_check( cudaEventSynchronize(stop) );
+        cuda_check( cudaEventElapsedTime(&time_ms, start, stop) );
+
+        printf("Execution time: %3.1f ms\n", time_ms);
+    }
+
+	if(mem_info){
+        size_t free_bytes;
+        size_t total_bytes;
+        cuda_check(cudaMemGetInfo(&free_bytes, &total_bytes));
+        double used_mem = (total_bytes - free_bytes)/1024/1024;
+        printf("Used memory: %f MB\n", used_mem);
+    }
 
 
 
