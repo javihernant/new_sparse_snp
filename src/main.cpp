@@ -7,7 +7,7 @@
 #include "tests.hpp"
 #include <getopt.h>
 
-typedef void(*Samples)(int, int, int, char*, bool, bool);
+typedef void(*Samples)(int, int, int, char*, bool, bool, int);
 
 void print_usage(char* argv[]){
 
@@ -17,7 +17,7 @@ void print_usage(char* argv[]){
 	//printf("\n[i] is the input file describing the SNP to be simulated (check format in help file of repository)\n");
 	printf("\n[example] is the example index:\n");
 	printf("\t0 = simple SNP\n");
-	printf("\t1 = sorting of natural numbers\n");
+	printf("\t1 = sorting of natural numbers. Give an input size with flag [-n size].\n(i.e [-n 10] will sort an array [10,9...1] in ascending order. Default size value is 50\n");
 	printf("\t2 = simple SNP (with delays)\n");
 	printf("\t3 = subset sum (with delays)\n");
 	printf("\n[algorithm] is the algorithm index\n");
@@ -32,10 +32,8 @@ void print_usage(char* argv[]){
 	printf("\t[-v level] = Set a level of verbosity\n");
 	printf("\t[-t] = Set flag to measure execution time\n");
 	printf("\t[-m] = Set flag for memory usage info\n");
-	// printf("\t1 = GPU lineal algebra CUBLAS\n");
-	// printf("\t2 = GPU sparse representation CUSPARSE\n");
+	printf("\t[-n] = Give the example the size of the input\n");
 	// TODO: Read input file of an snp
-
 }
 
 int main(int argc, char* argv[])
@@ -43,6 +41,7 @@ int main(int argc, char* argv[])
 	//main args
 	int algorithm = -1;
 	int example = -1;
+	int input_size = 50;
 
 	//option args
 	char* outfile = NULL;
@@ -52,7 +51,7 @@ int main(int argc, char* argv[])
 	bool mem_info = false;
 	
 	char opt;
-	while ((opt = getopt(argc, argv, "e:a:o:r:v:tm")) != -1) {
+	while ((opt = getopt(argc, argv, "e:a:o:r:v:tmn:")) != -1) {
 		switch (opt) {
                 case 'e':
                 	example = atoi(optarg);
@@ -85,6 +84,9 @@ int main(int argc, char* argv[])
 				case 'm':
 					mem_info = true;
 					break;
+				case 'n':
+					input_size = atoi(optarg);
+					break;
 			   	default:
                    	print_usage(argv);
                    	exit(0);
@@ -104,8 +106,8 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	Samples samples[] = {&simple_snp, &sort_numbers_snp, &simple_snp_with_delays};
-	samples[example](algorithm, verbosity, repetitions, outfile, count_time, mem_info);
+	Samples samples[] = {&simple_snp, &sort_numbers_snp, &simple_snp_with_delays, &testSubsetSumNonUniformDelays};
+	samples[example](algorithm, verbosity, repetitions, outfile, count_time, mem_info, input_size);
 	
 	//params.debug=1;	
 	//while (!vars.halt) {
@@ -115,4 +117,4 @@ int main(int argc, char* argv[])
 	//free_memory(&params,&vars);
 	
 	return 0;
-}
+

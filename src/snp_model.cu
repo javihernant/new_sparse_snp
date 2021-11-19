@@ -143,7 +143,7 @@ void SNP_model::print_conf_vector (ofstream *fs){
     printf("\n");
 }
 
-void SNP_model::set_snpconfig (int verbosity_lv, int repetitions, char *outfile, bool count_time, bool get_mem_info){
+void SNP_model::set_snpconfig (int verbosity_lv, char *outfile, bool count_time, bool get_mem_info){
     this->verbosity_lv = verbosity_lv;
     this->repetitions = repetitions;
     this->outfile = outfile;
